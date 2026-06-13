@@ -1,0 +1,72 @@
+{
+  "code": "mbi",
+  "title": "Профессиональное выгорание (по модели Маслач)",
+  "intro": "22 утверждения о ваших чувствах на работе. Отвечайте, как часто вы их испытываете. Опрос помогает вовремя заметить перегрузку. Около 7 минут",
+  "outro": "Спасибо! Ответы сохранены",
+  "show_result_to_respondent": false,
+  "question_type": "likert",
+  "options_preset": [
+    {"id": "0", "label": "Никогда", "value": 0},
+    {"id": "1", "label": "Несколько раз в год", "value": 1},
+    {"id": "2", "label": "Раз в месяц", "value": 2},
+    {"id": "3", "label": "Несколько раз в месяц", "value": 3},
+    {"id": "4", "label": "Раз в неделю", "value": 4},
+    {"id": "5", "label": "Несколько раз в неделю", "value": 5},
+    {"id": "6", "label": "Каждый день", "value": 6}
+  ],
+  "scales_meta": {
+    "exhaustion": "Эмоциональное истощение: опустошённость, усталость от работы",
+    "depersonalization": "Деперсонализация: цинизм, отстранённость от людей и дела",
+    "accomplishment": "Профессиональная успешность: ощущение эффективности (обратная шкала)"
+  },
+  "questions": [
+    {"id": "q1", "text": "Я чувствую себя эмоционально опустошённым к концу рабочего дня", "scale": "exhaustion"},
+    {"id": "q2", "text": "После работы я чувствую себя выжатым как лимон", "scale": "exhaustion"},
+    {"id": "q3", "text": "Утром я чувствую усталость уже при мысли о работе", "scale": "exhaustion"},
+    {"id": "q4", "text": "Работа с людьми весь день требует от меня большого напряжения", "scale": "exhaustion"},
+    {"id": "q5", "text": "Я чувствую, что работа эмоционально выматывает меня", "scale": "exhaustion"},
+    {"id": "q6", "text": "Я чувствую, что нахожусь на пределе своих возможностей", "scale": "exhaustion"},
+    {"id": "q7", "text": "Я чувствую себя разочарованным в своей работе", "scale": "exhaustion"},
+    {"id": "q8", "text": "Мне кажется, я работаю слишком много", "scale": "exhaustion"},
+    {"id": "q9", "text": "Работа напрямую с людьми приносит мне слишком много стресса", "scale": "exhaustion"},
+    {"id": "q10", "text": "Я стал более чёрствым к людям с тех пор, как занимаюсь этой работой", "scale": "depersonalization"},
+    {"id": "q11", "text": "Я беспокоюсь, что работа делает меня эмоционально жёстче", "scale": "depersonalization"},
+    {"id": "q12", "text": "Меня мало волнует, что происходит с некоторыми коллегами или клиентами", "scale": "depersonalization"},
+    {"id": "q13", "text": "Мне кажется, коллеги и клиенты перекладывают на меня свои проблемы", "scale": "depersonalization"},
+    {"id": "q14", "text": "Иногда мне безразлично то, что раньше было важным в работе", "scale": "depersonalization"},
+    {"id": "q15", "text": "Я отношусь к некоторым рабочим вопросам более отстранённо, чем следовало бы", "scale": "depersonalization"},
+    {"id": "q16", "text": "Я легко понимаю, что чувствуют коллеги и клиенты", "scale": "accomplishment", "reverse": true},
+    {"id": "q17", "text": "Я эффективно решаю проблемы, возникающие в работе", "scale": "accomplishment", "reverse": true},
+    {"id": "q18", "text": "Я чувствую, что своим трудом приношу пользу", "scale": "accomplishment", "reverse": true},
+    {"id": "q19", "text": "Я полон энергии и энтузиазма в работе", "scale": "accomplishment", "reverse": true},
+    {"id": "q20", "text": "Мне удаётся создавать спокойную атмосферу в рабочих ситуациях", "scale": "accomplishment", "reverse": true},
+    {"id": "q21", "text": "Я доволен тем, чего достигаю в работе", "scale": "accomplishment", "reverse": true},
+    {"id": "q22", "text": "В работе я спокойно справляюсь с эмоциональными нагрузками", "scale": "accomplishment", "reverse": true}
+  ],
+  "scoring": {
+    "method": "sum_by_scale",
+    "scales": ["exhaustion", "depersonalization", "accomplishment"],
+    "reverse_note": "Шкала accomplishment считается по прямым значениям ответов (reverse=true помечает, что высокий балл по шкале это ХОРОШО, в отличие от двух других шкал). Для риск-оценки accomplishment интерпретируется инверсно: низкая успешность = плохо",
+    "ranges": {
+      "exhaustion": [0, 54],
+      "depersonalization": [0, 30],
+      "accomplishment": [0, 42]
+    }
+  },
+  "interpretations": [
+    {"scale": "exhaustion", "min": 0, "max": 16, "level": "low", "text": "Истощение низкое"},
+    {"scale": "exhaustion", "min": 17, "max": 26, "level": "medium", "text": "Истощение среднее, зона внимания"},
+    {"scale": "exhaustion", "min": 27, "max": 54, "level": "high", "text": "Истощение высокое, ключевой признак выгорания"},
+    {"scale": "depersonalization", "min": 0, "max": 6, "level": "low", "text": "Деперсонализация низкая"},
+    {"scale": "depersonalization", "min": 7, "max": 12, "level": "medium", "text": "Деперсонализация средняя, нарастает цинизм"},
+    {"scale": "depersonalization", "min": 13, "max": 30, "level": "high", "text": "Деперсонализация высокая, выраженная отстранённость"},
+    {"scale": "accomplishment", "min": 37, "max": 42, "level": "low", "text": "Успешность высокая (хорошо), человек чувствует свою эффективность"},
+    {"scale": "accomplishment", "min": 31, "max": 36, "level": "medium", "text": "Успешность средняя"},
+    {"scale": "accomplishment", "min": 0, "max": 30, "level": "high", "text": "Успешность снижена (тревожно), человек обесценивает свои результаты"}
+  ],
+  "alert_rules": [
+    {"code": "burnout_high", "condition": "exhaustion >= 27", "level": "red", "message": "Высокое эмоциональное истощение, ключевой признак выгорания. Рекомендуем личную встречу и разговор о нагрузке"},
+    {"code": "burnout_rise", "condition": "рост exhaustion два замера подряд", "level": "yellow", "message": "Истощение растёт второй замер подряд. Стоит присмотреться к нагрузке"},
+    {"code": "cynism_high", "condition": "depersonalization >= 13", "level": "yellow", "message": "Высокий цинизм и отстранённость. Сигнал к разговору о мотивации и условиях"}
+  ]
+}

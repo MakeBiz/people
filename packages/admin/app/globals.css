@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Палитра MakeBiz → семантические переменные shadcn (HSL-тройки) */
+    --background: 210 20% 97%; /* #F5F7F9 фон страницы */
+    --foreground: 219 94% 19%; /* #03235F наборный текст */
+    --card: 0 0% 100%; /* #FFFFFF подложки */
+    --card-foreground: 219 94% 19%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 219 94% 19%;
+    --primary: 218 99% 32%; /* #013CA4 accent */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 221 94% 47%; /* #074EE8 accent-sort */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 210 20% 97%; /* #F5F7F9 */
+    --muted-foreground: 0 0% 67%; /* #AAAAAA */
+    --accent: 210 20% 97%; /* ховер на белом */
+    --accent-foreground: 219 94% 19%;
+    --destructive: 354 77% 44%; /* #C51929 red */
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 91%; /* #E7E7E7 */
+    --input: 0 0% 91%;
+    --ring: 218 99% 32%;
+    --radius: 1.25rem; /* 20px — основной радиус карточек MakeBiz */
+
+    /* Сырые токены MakeBiz (пилюли светофора, чарты, сайдбар) */
+    --mk-accent: #013ca4;
+    --mk-accent-sort: #074ee8;
+    --mk-text: #03235f;
+    --mk-text-emph: #013ca4;
+    --mk-muted: #aaaaaa;
+    --mk-red: #c51929;
+    --mk-green: #1fa971;
+    --mk-yellow: #f4c800;
+    --mk-c1: #edeefc;
+    --mk-c2: #e6f1fd;
+    --mk-c3: #9cb5db;
+    --mk-c4: #e6e6e6;
+    --mk-bg: #f5f7f9;
+    --mk-border: #e7e7e7;
+    --mk-shadow: 0 8px 28px rgba(72, 89, 102, 0.1);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "hr-testing-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Платформа психологического тестирования сотрудников: Telegram-бот + Next.js админка + PostgreSQL",
+  "workspaces": [
+    "packages/db",
+    "packages/bot",
+    "packages/admin"
+  ],
+  "scripts": {
+    "db:generate": "npm -w @hr/db run generate",
+    "db:migrate": "npm -w @hr/db run migrate",
+    "db:seed": "npm -w @hr/db run seed",
+    "db:studio": "npm -w @hr/db run studio",
+    "bot:dev": "npm -w @hr/bot run dev",
+    "admin:dev": "npm -w @hr/admin run dev"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

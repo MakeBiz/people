@@ -1,0 +1,230 @@
+// Схема БД платформы HR-тестирования.
+// Только стандартный PostgreSQL, без вендорских фич — для портируемости (раздел 3 ТЗ).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Подразделения ---
+model Department {
+  id       String  @id @default(uuid()) @db.Uuid
+  name     String
+  parentId String? @map("parent_id") @db.Uuid
+  parent   Department?  @relation("DeptTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Department[] @relation("DeptTree")
+  people   Person[]
+  campaigns Campaign[]
+  alerts   Alert[]
+
+  @@map("departments")
+}
+
+// --- Люди (и кандидаты, и сотрудники) ---
+model Person {
+  id              String    @id @default(uuid()) @db.Uuid
+  telegramId      BigInt?   @unique @map("telegram_id")
+  fullName        String    @map("full_name")
+  status          String    @default("candidate") // candidate | employee | archived
+  departmentId    String?   @map("department_id") @db.Uuid
+  position        String?
+  managerId       String?   @map("manager_id") @db.Uuid
+  hiredAt         DateTime? @map("hired_at") @db.Date
+  consentGivenAt  DateTime? @map("consent_given_at") @db.Timestamptz
+  consentDeclined Boolean   @default(false) @map("consent_declined")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  department  Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  manager     Person?      @relation("ManagerTree", fields: [managerId], references: [id], onDelete: SetNull)
+  reports     Person[]     @relation("ManagerTree")
+  assignments Assignment[]
+  results     Result[]
+  alerts      Alert[]
+  adminUser   AdminUser?
+  profiles    PersonProfile[]
+
+  @@index([telegramId])
+  @@index([departmentId])
+  @@map("people")
+}
+
+// --- Пользователи админки ---
+model AdminUser {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         String   @default("hr") // owner | hr | manager
+  personId     String?  @unique @map("person_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  person      Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
+  assignments Assignment[]
+  acknowledgedAlerts Alert[] @relation("AlertAck")
+
+  @@map("admin_users")
+}
+
+// --- Тесты (контент) ---
+model Test {
+  id              String   @id @default(uuid()) @db.Uuid
+  code            String   @unique // 'disc', 'gerchikov', 'uwes9', 'pss10', 'enps', 'rotter'
+  title           String
+  description     String?
+  category        String   // candidate | typing | deep | monitoring
+  estimatedMinutes Int?    @map("estimated_minutes")
+  content         Json     // весь тест: вопросы, шкалы, скоринг, интерпретации
+  isActive        Boolean  @default(true) @map("is_active")
+  version         Int      @default(1)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  assignments Assignment[]
+  results     Result[]
+  campaigns   Campaign[]
+
+  @@map("tests")
+}
+
+// --- Назначения тестов ---
+model Assignment {
+  id          String    @id @default(uuid()) @db.Uuid
+  personId    String?   @map("person_id") @db.Uuid // null допустим для анонимных кампаний
+  testId      String    @map("test_id") @db.Uuid
+  assignedBy  String?   @map("assigned_by") @db.Uuid
+  status      String    @default("pending") // pending | in_progress | completed | expired
+  deadline    DateTime? @db.Timestamptz
+  isAnonymous Boolean   @default(false) @map("is_anonymous")
+  inviteToken String    @unique @map("invite_token")
+  // department_id фиксируется на момент назначения (нужно для анонимных кампаний)
+  departmentId String?  @map("department_id") @db.Uuid
+  remindedAt  DateTime? @map("reminded_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  person     Person?    @relation(fields: [personId], references: [id], onDelete: Cascade)
+  test       Test       @relation(fields: [testId], references: [id], onDelete: Cascade)
+  assignedByUser AdminUser? @relation(fields: [assignedBy], references: [id], onDelete: SetNull)
+  sessions   Session[]
+
+  @@index([inviteToken])
+  @@index([status])
+  @@map("assignments")
+}
+
+// --- Сессия прохождения ---
+model Session {
+  id              String    @id @default(uuid()) @db.Uuid
+  assignmentId    String    @map("assignment_id") @db.Uuid
+  startedAt       DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt      DateTime? @map("finished_at") @db.Timestamptz
+  currentQuestion Int       @default(0) @map("current_question")
+  // транзиентное состояние шага (например, выбранный "most" в DISC), JSON
+  stepState       Json?     @map("step_state")
+  // Метрики прохождения (раздел 5 спеки) — только для руководителя
+  durationSeconds Int?      @map("duration_seconds")
+  backCount       Int       @default(0) @map("back_count")
+  resumeCount     Int       @default(0) @map("resume_count")
+  avgResponseMs   Int?      @map("avg_response_ms")
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  answers    Answer[]
+  result     Result?
+
+  @@index([assignmentId])
+  @@map("sessions")
+}
+
+// --- Ответы ---
+model Answer {
+  id          String   @id @default(uuid()) @db.Uuid
+  sessionId   String   @map("session_id") @db.Uuid
+  questionId  String   @map("question_id") // id вопроса из JSON теста
+  optionId    String   @map("option_id")   // id выбранного варианта
+  answerValue Float?   @map("answer_value") // балл варианта
+  responseMs  Int?     @map("response_ms")  // время ответа, антифрод-сигнал
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("answers")
+}
+
+// --- Результаты (посчитанные шкалы) ---
+model Result {
+  id             String   @id @default(uuid()) @db.Uuid
+  sessionId      String   @unique @map("session_id") @db.Uuid
+  personId       String?  @map("person_id") @db.Uuid // null для анонимных
+  testId         String   @map("test_id") @db.Uuid
+  departmentId   String?  @map("department_id") @db.Uuid
+  scores         Json     // {"D": 17, "I": 9, ...} или {"exhaustion": 23, ...}
+  interpretation Json     // подобранные текстовые блоки интерпретаций
+  validityFlag   String?  @map("validity_flag") // ok | too_fast | uniform
+  employeeSummary String? @map("employee_summary") // тёплый текст сотруднику (промт 1, LLM)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  person  Person? @relation(fields: [personId], references: [id], onDelete: Cascade)
+  test    Test    @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([personId, testId, createdAt])
+  @@map("results")
+}
+
+// --- Снимки накопительного профиля (анамнез, раздел 8 спеки) ---
+model PersonProfile {
+  id               String   @id @default(uuid()) @db.Uuid
+  personId         String   @map("person_id") @db.Uuid
+  managerText      String   @map("manager_text") // развёрнутый профиль (промт 2, LLM)
+  basedOnResultIds String[] @map("based_on_result_ids") @db.Uuid // на каких результатах собран
+  generatedAt      DateTime @default(now()) @map("generated_at") @db.Timestamptz
+  version          Int      @default(1)
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([personId, version])
+  @@map("person_profiles")
+}
+
+// --- Алерты мониторинга ---
+model Alert {
+  id             String    @id @default(uuid()) @db.Uuid
+  personId       String?   @map("person_id") @db.Uuid
+  departmentId   String?   @map("department_id") @db.Uuid // для агрегатных (системных) сигналов отдела
+  level          String    // red | yellow
+  ruleCode       String    @map("rule_code") // burnout_high | engagement_drop | enps_drop | stress_rise | invalid_session
+  details        Json      // значения метрик, дельты; details.system=true для сигнала отдела
+  status         String    @default("new") // new | acknowledged | resolved
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  acknowledgedBy String?   @map("acknowledged_by") @db.Uuid
+  resolvedAt     DateTime? @map("resolved_at") @db.Timestamptz
+
+  person          Person?     @relation(fields: [personId], references: [id], onDelete: Cascade)
+  department      Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  acknowledgedByUser AdminUser? @relation("AlertAck", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([departmentId])
+  @@map("alerts")
+}
+
+// --- Периодические кампании мониторинга ---
+model Campaign {
+  id           String    @id @default(uuid()) @db.Uuid
+  testId       String    @map("test_id") @db.Uuid
+  schedule     String    // monthly | quarterly | semiannual | annual
+  target       String    @default("all") // 'all' | department_id
+  departmentId String?   @map("department_id") @db.Uuid
+  isAnonymous  Boolean   @default(false) @map("is_anonymous")
+  nextRunAt    DateTime? @map("next_run_at") @db.Timestamptz
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  test       Test        @relation(fields: [testId], references: [id], onDelete: Cascade)
+  department Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@map("campaigns")
+}

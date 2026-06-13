@@ -1,0 +1,79 @@
+# Прод-стек для сервера, где PostgreSQL уже крутится отдельно
+# (контейнер `postgres` во внешней сети `appnet`, /opt/stack/postgres).
+# Свой postgres НЕ поднимаем — подключаемся к существующему.
+#
+# Запуск:  docker compose -f docker-compose.prod.yml up -d --build
+# Бот в режиме polling — домен/вебхук ему не нужен, только админке (HTTPS через Caddy).
+
+services:
+  # Одноразовая инициализация схемы в существующей БД + сид тестов/владельца
+  migrate:
+    build:
+      context: .
+      dockerfile: packages/bot/Dockerfile
+    command: ["npm", "-w", "@hr/db", "run", "init"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      OWNER_EMAIL: ${OWNER_EMAIL}
+      OWNER_PASSWORD: ${OWNER_PASSWORD}
+      CONTENT_DIR: /app/content
+    networks: [appnet]
+    restart: "no"
+
+  bot:
+    build:
+      context: .
+      dockerfile: packages/bot/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      BOT_TOKEN: ${BOT_TOKEN}
+      BOT_USERNAME: ${BOT_USERNAME}
+      BOT_MODE: polling
+      # Генерация текстов (промты 1/2). Без ключа фича мягко отключается.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    networks: [appnet]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  admin:
+    build:
+      context: .
+      dockerfile: packages/admin/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      BOT_USERNAME: ${BOT_USERNAME}
+    networks: [appnet]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [appnet]
+    depends_on:
+      - admin
+
+# Внешняя сеть, в которой уже живёт контейнер postgres
+networks:
+  appnet:
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:

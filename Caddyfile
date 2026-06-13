@@ -1,0 +1,16 @@
+# HTTPS, домены и reverse proxy. Caddy сам получает сертификаты Let's Encrypt.
+{
+	email {$ACME_EMAIL}
+}
+
+# Админка
+{$ADMIN_DOMAIN} {
+	encode gzip
+	reverse_proxy admin:3000
+}
+
+# Webhook бота (нужен только при BOT_MODE=webhook; при polling домен можно не настраивать)
+{$BOT_DOMAIN} {
+	encode gzip
+	reverse_proxy bot:8080
+}

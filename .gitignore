@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+**/node_modules/
+
+# secrets
+.env
+*.env
+!.env.example
+
+# build artifacts
+dist/
+.next/
+out/
+packages/db/src/generated/
+*.tsbuildinfo
+
+# logs
+*.log
+npm-debug.log*
+
+# os
+.DS_Store
+
+# docker volumes / backups
+backups/
+pgdata/

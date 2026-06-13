@@ -1,0 +1,9 @@
+# Прод: только админка (бот в polling, домен ему не нужен).
+{
+	email {$ACME_EMAIL}
+}
+
+{$ADMIN_DOMAIN} {
+	encode gzip
+	reverse_proxy admin:3000
+}
