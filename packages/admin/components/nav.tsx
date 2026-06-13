@@ -11,6 +11,7 @@ import {
   FileText,
   Settings,
   CalendarClock,
+  Activity,
   LogOut,
 } from "lucide-react";
 import { MakeBizLogo } from "@/components/logo";
@@ -21,6 +22,7 @@ const LINKS = [
   { href: "/people", label: "Люди", Icon: Users },
   { href: "/assignments", label: "Назначения", Icon: Send },
   { href: "/campaigns", label: "Кампании", Icon: CalendarClock },
+  { href: "/pulse", label: "Пульс-опросы", Icon: Activity },
   { href: "/tests", label: "Тесты", Icon: FileText },
   { sep: true as const },
   { href: "/alerts", label: "Алерты", Icon: Bell, badge: true },
