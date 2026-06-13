@@ -11,6 +11,7 @@ import {
   handleContinue,
   handleMyTests,
 } from "./engine.js";
+import { startScheduler } from "./scheduler.js";
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -73,6 +74,9 @@ bot.on("message:text", async (ctx) => {
 bot.catch((err) => {
   console.error("Bot error:", err.error);
 });
+
+// Планировщик кампаний мониторинга (автоназначение + напоминания)
+startScheduler(bot);
 
 // --- Запуск: polling или webhook ---
 const mode = process.env.BOT_MODE ?? "polling";

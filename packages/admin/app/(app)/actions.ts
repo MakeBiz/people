@@ -92,3 +92,54 @@ export async function resolveAlert(formData: FormData) {
   revalidatePath("/alerts");
   revalidatePath("/");
 }
+
+// --- Кампании мониторинга (планировщик исполняет их в боте) ---
+export async function createCampaign(formData: FormData) {
+  const testId = String(formData.get("testId") ?? "");
+  if (!testId) return;
+  const schedule = String(formData.get("schedule") ?? "monthly");
+  const departmentId = optField(formData, "departmentId"); // null = вся компания
+  const anonymous = formData.get("anonymous") === "on";
+  const startRaw = String(formData.get("startDate") ?? "");
+  const nextRunAt = startRaw ? new Date(startRaw) : new Date();
+
+  await prisma.campaign.create({
+    data: {
+      testId,
+      schedule,
+      target: departmentId ? "department" : "all",
+      departmentId,
+      isAnonymous: anonymous,
+      nextRunAt,
+      isActive: true,
+    },
+  });
+  revalidatePath("/campaigns");
+}
+
+export async function toggleCampaign(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const c = await prisma.campaign.findUnique({ where: { id } });
+  if (!c) return;
+  await prisma.campaign.update({ where: { id }, data: { isActive: !c.isActive } });
+  revalidatePath("/campaigns");
+}
+
+// «Запустить сейчас» — сдвигаем next_run_at в прошлое, бот подхватит на ближайшем тике.
+export async function runCampaignNow(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await prisma.campaign.update({
+    where: { id },
+    data: { nextRunAt: new Date(), isActive: true },
+  });
+  revalidatePath("/campaigns");
+}
+
+export async function deleteCampaign(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await prisma.campaign.delete({ where: { id } });
+  revalidatePath("/campaigns");
+}

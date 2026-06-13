@@ -10,6 +10,7 @@ import {
   Bell,
   FileText,
   Settings,
+  CalendarClock,
   LogOut,
 } from "lucide-react";
 import { MakeBizLogo } from "@/components/logo";
@@ -19,6 +20,7 @@ const LINKS = [
   { href: "/", label: "Дашборд", Icon: LayoutDashboard },
   { href: "/people", label: "Люди", Icon: Users },
   { href: "/assignments", label: "Назначения", Icon: Send },
+  { href: "/campaigns", label: "Кампании", Icon: CalendarClock },
   { href: "/tests", label: "Тесты", Icon: FileText },
   { sep: true as const },
   { href: "/alerts", label: "Алерты", Icon: Bell, badge: true },
