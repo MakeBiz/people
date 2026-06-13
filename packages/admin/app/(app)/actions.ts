@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { generateInviteToken } from "@/lib/tokens";
+import { validateTestContent } from "@/lib/validate-test";
 
 // Optional-селекты в Radix используют сентинел "none" вместо пустой строки.
 function optField(formData: FormData, key: string): string | null {
@@ -142,4 +143,70 @@ export async function deleteCampaign(formData: FormData) {
   if (!id) return;
   await prisma.campaign.delete({ where: { id } });
   revalidatePath("/campaigns");
+}
+
+// --- Редактор тестов: загрузка/обновление JSON с валидацией (раздел 9 ТЗ) ---
+export interface TestFormState {
+  error?: string;
+  message?: string;
+}
+
+export async function upsertTestFromJson(
+  _prev: TestFormState,
+  formData: FormData
+): Promise<TestFormState> {
+  const jsonText = String(formData.get("json") ?? "");
+  const formCategory = String(formData.get("category") ?? "");
+  if (!jsonText.trim()) return { error: "Пустой JSON" };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (err) {
+    return { error: `Невалидный JSON: ${err instanceof Error ? err.message : "ошибка синтаксиса"}` };
+  }
+
+  const { ok, errors, content } = validateTestContent(parsed);
+  if (!ok || !content) {
+    return { error: "Ошибки схемы:\n• " + errors.join("\n• ") };
+  }
+
+  const existing = await prisma.test.findUnique({ where: { code: content.code } });
+  const category = content.category ?? (formCategory || existing?.category || "monitoring");
+  await prisma.test.upsert({
+    where: { code: content.code },
+    update: {
+      title: content.title,
+      description: content.description ?? null,
+      category,
+      estimatedMinutes: content.estimated_minutes ?? null,
+      content: parsed as object,
+      version: { increment: 1 },
+    },
+    create: {
+      code: content.code,
+      title: content.title,
+      description: content.description ?? null,
+      category,
+      estimatedMinutes: content.estimated_minutes ?? null,
+      content: parsed as object,
+      isActive: true,
+      version: 1,
+    },
+  });
+  revalidatePath("/tests");
+  return {
+    message: existing
+      ? `Тест «${content.title}» обновлён (версия ${existing.version + 1})`
+      : `Тест «${content.title}» создан`,
+  };
+}
+
+export async function toggleTest(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const t = await prisma.test.findUnique({ where: { id } });
+  if (!t) return;
+  await prisma.test.update({ where: { id }, data: { isActive: !t.isActive } });
+  revalidatePath("/tests");
 }

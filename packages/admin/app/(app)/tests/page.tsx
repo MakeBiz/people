@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/db";
 import type { TestContent } from "@/lib/db";
-import { formatDate } from "@/lib/utils";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -11,6 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TestEditor } from "@/components/test-editor";
+import { toggleTest } from "@/app/(app)/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +30,19 @@ export default async function TestsPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Тесты</h1>
       <p className="text-sm text-muted-foreground">
-        Тесты — это данные. Загрузка/редактирование JSON и предпросмотр вопросов появятся в Этапе 2.
-        Сейчас контент загружается сидом из папки <code>/content</code>.
+        Тесты — это данные: тест целиком описан JSON. Загрузите новый или отредактируйте
+        существующий — перед сохранением JSON проверяется по схеме, версия увеличивается
+        автоматически. Бот всегда берёт активную версию.
       </p>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Новый тест (загрузить JSON)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TestEditor submitLabel="Создать тест" />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-0">
@@ -46,7 +58,7 @@ export default async function TestsPage() {
                 <TableHead>Аноним.</TableHead>
                 <TableHead>~мин</TableHead>
                 <TableHead>Версия</TableHead>
-                <TableHead>Активен</TableHead>
+                <TableHead>Статус</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -64,11 +76,22 @@ export default async function TestsPage() {
                     <TableCell>{t.estimatedMinutes ?? "—"}</TableCell>
                     <TableCell>{t.version}</TableCell>
                     <TableCell>
-                      {t.isActive ? (
-                        <Badge variant="green">да</Badge>
-                      ) : (
-                        <Badge variant="slate">нет</Badge>
-                      )}
+                      <form action={toggleTest} className="flex items-center gap-2">
+                        <input type="hidden" name="id" value={t.id} />
+                        {t.isActive ? (
+                          <Badge variant="green">да</Badge>
+                        ) : (
+                          <Badge variant="slate">нет</Badge>
+                        )}
+                        <Button
+                          type="submit"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                        >
+                          {t.isActive ? "Выключить" : "Включить"}
+                        </Button>
+                      </form>
                     </TableCell>
                   </TableRow>
                 );
@@ -82,6 +105,31 @@ export default async function TestsPage() {
               )}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Редактировать существующий</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {tests.map((t) => (
+            <details key={t.id} className="rounded-md border border-border">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
+                <span className="font-mono text-xs text-muted-foreground">{t.code}</span>
+                {" — "}
+                {t.title}{" "}
+                <span className="text-xs text-muted-foreground">(v{t.version})</span>
+              </summary>
+              <div className="border-t border-border p-4">
+                <TestEditor
+                  initialJson={JSON.stringify(t.content, null, 2)}
+                  initialCategory={t.category}
+                  submitLabel="Сохранить изменения"
+                />
+              </div>
+            </details>
+          ))}
         </CardContent>
       </Card>
     </div>
