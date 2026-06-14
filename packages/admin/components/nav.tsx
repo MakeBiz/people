@@ -12,6 +12,7 @@ import {
   Settings,
   CalendarClock,
   Activity,
+  BarChart3,
   LogOut,
 } from "lucide-react";
 import { MakeBizLogo } from "@/components/logo";
@@ -24,6 +25,7 @@ const LINKS = [
   { href: "/assignments", label: "Назначения", Icon: Send },
   { href: "/campaigns", label: "Кампании", Icon: CalendarClock, roles: ["owner", "hr"] },
   { href: "/pulse", label: "Пульс-опросы", Icon: Activity, roles: ["owner", "hr"] },
+  { href: "/compare", label: "Сравнение команд", Icon: BarChart3, roles: ["owner", "hr"] },
   { href: "/tests", label: "Тесты", Icon: FileText, roles: ["owner", "hr"] },
   { sep: true as const },
   { href: "/alerts", label: "Алерты", Icon: Bell, badge: true },
