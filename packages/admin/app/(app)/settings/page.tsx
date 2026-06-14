@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { isPrivileged } from "@/lib/access";
+import { NoAccess } from "@/components/no-access";
+import { AdminUserForm } from "@/components/admin-user-form";
 import { formatDate } from "@/lib/utils";
 import { createDepartment } from "../actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,12 +30,23 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const session = await auth();
+  if (!isPrivileged(session?.user.role)) return <NoAccess />;
   const isOwner = session?.user.role === "owner";
 
-  const [admins, departments] = await Promise.all([
+  const [admins, departments, people] = await Promise.all([
     prisma.adminUser.findMany({ include: { person: true }, orderBy: { createdAt: "asc" } }),
     prisma.department.findMany({ include: { parent: true }, orderBy: { name: "asc" } }),
+    prisma.person.findMany({
+      where: { status: { not: "archived" } },
+      include: { department: true },
+      orderBy: { fullName: "asc" },
+    }),
   ]);
+  const peopleOptions = people.map((p) => ({
+    id: p.id,
+    name: p.fullName,
+    dept: p.department?.name ?? null,
+  }));
 
   return (
     <div className="space-y-6">
@@ -89,7 +103,8 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle className="text-base">Пользователи админки</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {isOwner && <AdminUserForm people={peopleOptions} />}
           <Table>
             <TableHeader>
               <TableRow>
@@ -114,8 +129,8 @@ export default async function SettingsPage() {
           </Table>
           <p className="mt-2 text-xs text-muted-foreground">
             {isOwner
-              ? "Управление пользователями (создание/роли), редактор текста согласия ПДн и привязка Telegram-уведомлений — расширяется в Этапе 2."
-              : "Управление пользователями доступно только роли owner."}
+              ? "Создавайте HR (доступ ко всей компании) или менеджеров (доступ ограничен отделом привязанного сотрудника)."
+              : "Создание пользователей доступно только роли owner."}
           </p>
         </CardContent>
       </Card>

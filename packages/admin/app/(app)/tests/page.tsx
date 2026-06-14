@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/table";
 import { TestEditor } from "@/components/test-editor";
 import { toggleTest } from "@/app/(app)/actions";
+import { getScope, isPrivileged } from "@/lib/access";
+import { NoAccess } from "@/components/no-access";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,9 @@ const CATEGORY_RU: Record<string, string> = {
 };
 
 export default async function TestsPage() {
+  const scope = await getScope();
+  if (!isPrivileged(scope.role)) return <NoAccess />;
+
   const tests = await prisma.test.findMany({ orderBy: { category: "asc" } });
 
   return (

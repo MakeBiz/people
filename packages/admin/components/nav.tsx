@@ -17,16 +17,17 @@ import {
 import { MakeBizLogo } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
+// roles: если задано — пункт виден только этим ролям; иначе всем.
 const LINKS = [
   { href: "/", label: "Дашборд", Icon: LayoutDashboard },
   { href: "/people", label: "Люди", Icon: Users },
   { href: "/assignments", label: "Назначения", Icon: Send },
-  { href: "/campaigns", label: "Кампании", Icon: CalendarClock },
-  { href: "/pulse", label: "Пульс-опросы", Icon: Activity },
-  { href: "/tests", label: "Тесты", Icon: FileText },
+  { href: "/campaigns", label: "Кампании", Icon: CalendarClock, roles: ["owner", "hr"] },
+  { href: "/pulse", label: "Пульс-опросы", Icon: Activity, roles: ["owner", "hr"] },
+  { href: "/tests", label: "Тесты", Icon: FileText, roles: ["owner", "hr"] },
   { sep: true as const },
   { href: "/alerts", label: "Алерты", Icon: Bell, badge: true },
-  { href: "/settings", label: "Настройки", Icon: Settings },
+  { href: "/settings", label: "Настройки", Icon: Settings, roles: ["owner", "hr"] },
 ];
 
 export function Nav({
@@ -46,7 +47,7 @@ export function Nav({
       </div>
 
       <nav className="flex flex-col gap-0.5 rounded-[20px] border border-mk-border bg-card p-2.5 shadow-mk">
-        {LINKS.map((l, i) => {
+        {LINKS.filter((l) => !("roles" in l) || l.roles!.includes(role)).map((l, i) => {
           if ("sep" in l) return <div key={i} className="mx-1 my-1.5 h-px bg-[#EEF1F4]" />;
           const active = l.href === "/" ? pathname === "/" : pathname.startsWith(l.href);
           return (

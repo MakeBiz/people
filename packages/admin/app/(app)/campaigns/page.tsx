@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db";
+import { getScope, isPrivileged } from "@/lib/access";
+import { NoAccess } from "@/components/no-access";
 import { formatDateTime } from "@/lib/utils";
 import { createCampaign, toggleCampaign, runCampaignNow, deleteCampaign } from "../actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +33,9 @@ const SCHEDULE_RU: Record<string, string> = {
 };
 
 export default async function CampaignsPage() {
+  const scope = await getScope();
+  if (!isPrivileged(scope.role)) return <NoAccess />;
+
   const [campaigns, tests, departments] = await Promise.all([
     prisma.campaign.findMany({
       include: { test: true, department: true },

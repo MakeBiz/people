@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { getScope } from "@/lib/access";
+import { NoAccess } from "@/components/no-access";
 import { STATUS_RU, formatDate } from "@/lib/utils";
 import { createPerson } from "../actions";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,9 +32,18 @@ export default async function PeoplePage({
 }: {
   searchParams: { status?: string; dept?: string };
 }) {
+  const scope = await getScope(searchParams.dept);
+  if (scope.blocked) {
+    return (
+      <NoAccess message="Ваша учётная запись менеджера не привязана к отделу. Обратитесь к администратору." />
+    );
+  }
+
   const where: Record<string, unknown> = {};
   if (searchParams.status) where.status = searchParams.status;
-  if (searchParams.dept) where.departmentId = searchParams.dept;
+  // manager жёстко ограничен своим отделом; owner/hr — фильтр по клику.
+  const deptFilter = scope.isManager ? scope.deptFilter : searchParams.dept;
+  if (deptFilter) where.departmentId = deptFilter;
 
   const [people, departments, managers, openAlerts] = await Promise.all([
     prisma.person.findMany({
@@ -58,7 +69,8 @@ export default async function PeoplePage({
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Люди</h1>
 
-      {/* Форма добавления */}
+      {/* Форма добавления — только owner/hr */}
+      {!scope.isManager && (
       <Card>
         <CardContent className="p-4">
           <details>
@@ -124,6 +136,7 @@ export default async function PeoplePage({
           </details>
         </CardContent>
       </Card>
+      )}
 
       {/* Фильтры */}
       <div className="flex flex-wrap gap-2">

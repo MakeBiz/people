@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { getScope } from "@/lib/access";
+import { NoAccess } from "@/components/no-access";
 import { RULE_RU, STATUS_RU, formatDateTime } from "@/lib/utils";
 import { acknowledgeAlert, resolveAlert } from "../actions";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,8 +23,22 @@ export default async function AlertsPage({
 }: {
   searchParams: { status?: string };
 }) {
+  const scope = await getScope();
+  if (scope.blocked) {
+    return (
+      <NoAccess message="Ваша учётная запись менеджера не привязана к отделу. Обратитесь к администратору." />
+    );
+  }
+
   const where: Record<string, unknown> =
     searchParams.status === "all" ? {} : { status: { not: "resolved" } };
+  // manager видит алерты только своего отдела (по человеку или системные на отдел).
+  if (scope.deptFilter) {
+    where.OR = [
+      { person: { departmentId: scope.deptFilter } },
+      { departmentId: scope.deptFilter },
+    ];
+  }
 
   const alerts = await prisma.alert.findMany({
     where,

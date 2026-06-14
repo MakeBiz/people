@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { auth } from "@/lib/auth";
+import { getScope } from "@/lib/access";
+import { NoAccess } from "@/components/no-access";
 import { formatDate } from "@/lib/utils";
 import {
   getCompanyHealth,
@@ -59,15 +60,15 @@ export default async function DashboardPage({
 }: {
   searchParams: { dept?: string };
 }) {
-  const session = await auth();
-  const role = session?.user.role ?? "hr";
-
   // Ролевой фильтр: manager видит только свой отдел; owner/hr — клик по отделу.
-  let deptFilter = searchParams.dept || undefined;
-  if (role === "manager" && session?.user.personId) {
-    const viewer = await prisma.person.findUnique({ where: { id: session.user.personId } });
-    deptFilter = viewer?.departmentId ?? "__none__";
+  const scope = await getScope(searchParams.dept);
+  const role = scope.role;
+  if (scope.blocked) {
+    return (
+      <NoAccess message="Ваша учётная запись менеджера не привязана к отделу. Обратитесь к администратору." />
+    );
   }
+  const deptFilter = scope.deptFilter;
 
   const [health, depts, risk, progress, motivation, alerts, peopleCount] = await Promise.all([
     getCompanyHealth(deptFilter),

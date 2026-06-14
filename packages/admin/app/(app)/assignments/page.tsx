@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { getScope } from "@/lib/access";
+import { NoAccess } from "@/components/no-access";
 import { STATUS_RU, formatDate, formatDateTime, deepLink } from "@/lib/utils";
 import { createAssignment } from "../actions";
 import { CopyLink } from "@/components/copy-link";
@@ -18,14 +20,29 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function AssignmentsPage() {
+  const scope = await getScope();
+  if (scope.blocked) {
+    return (
+      <NoAccess message="Ваша учётная запись менеджера не привязана к отделу. Обратитесь к администратору." />
+    );
+  }
+  // manager — только назначения и люди своего отдела.
+  const assignmentWhere = scope.deptFilter
+    ? { OR: [{ person: { departmentId: scope.deptFilter } }, { departmentId: scope.deptFilter }] }
+    : {};
+  const peopleWhere = scope.deptFilter
+    ? { status: { not: "archived" }, departmentId: scope.deptFilter }
+    : { status: { not: "archived" } };
+
   const [assignments, people, tests] = await Promise.all([
     prisma.assignment.findMany({
+      where: assignmentWhere,
       include: { person: true, test: true },
       orderBy: { createdAt: "desc" },
       take: 200,
     }),
     prisma.person.findMany({
-      where: { status: { not: "archived" } },
+      where: peopleWhere,
       orderBy: { fullName: "asc" },
     }),
     prisma.test.findMany({ where: { isActive: true }, orderBy: { title: "asc" } }),

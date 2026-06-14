@@ -1,4 +1,6 @@
 import { getPulseAggregates, type Trend } from "@/lib/pulse-metrics";
+import { getScope, isPrivileged } from "@/lib/access";
+import { NoAccess } from "@/components/no-access";
 import { PRIVACY_MIN_RESPONSES } from "@/lib/dashboard-config";
 import { formatDateTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +29,9 @@ function TrendChip({ delta, trend }: { delta: number | null; trend: Trend }) {
 }
 
 export default async function PulsePage() {
+  const scope = await getScope();
+  if (!isPrivileged(scope.role)) return <NoAccess />;
+
   const tests = await getPulseAggregates();
 
   return (
