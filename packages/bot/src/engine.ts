@@ -1,4 +1,4 @@
-import { InlineKeyboard, type Bot, type Context } from "grammy";
+import { InlineKeyboard, InputMediaBuilder, type Bot, type Context } from "grammy";
 import { prisma } from "@hr/db";
 import type { TestContent, Question } from "@hr/db";
 import { score, type RawAnswer } from "./scoring.js";
@@ -27,6 +27,15 @@ function contentOf(test: { content: unknown }): TestContent {
   return test.content as TestContent;
 }
 
+// ============ АБСТРАКЦИЯ ОТПРАВКИ ============
+// Вопрос отправляется либо в ответ на действие пользователя (ctx — можно
+// редактировать сообщение), либо по таймеру без ctx (через botRef.api в чат).
+interface Sink {
+  send(text: string, keyboard?: InlineKeyboard, markdown?: boolean): Promise<void>;
+  photo(url: string, caption: string, keyboard?: InlineKeyboard): Promise<void>;
+  album(items: { url: string; caption: string }[]): Promise<void>;
+}
+
 // Показать сообщение: при callback — редактируем то же сообщение (чат не растёт),
 // иначе отправляем новое.
 async function present(ctx: Context, text: string, keyboard?: InlineKeyboard, markdown = false) {
@@ -44,6 +53,86 @@ async function present(ctx: Context, text: string, keyboard?: InlineKeyboard, ma
   }
   await ctx.reply(text, opts);
 }
+
+function ctxSink(ctx: Context): Sink {
+  return {
+    send: (text, keyboard, markdown) => present(ctx, text, keyboard, markdown),
+    async photo(url, caption, keyboard) {
+      await ctx.replyWithPhoto(url, { caption, reply_markup: keyboard });
+    },
+    async album(items) {
+      await ctx.replyWithMediaGroup(
+        items.map((it) => InputMediaBuilder.photo(it.url, { caption: it.caption }))
+      );
+    },
+  };
+}
+
+function chatSink(chatId: number): Sink {
+  return {
+    async send(text, keyboard, markdown) {
+      await botRef.api.sendMessage(chatId, text, {
+        reply_markup: keyboard,
+        ...(markdown ? { parse_mode: "Markdown" as const } : {}),
+      });
+    },
+    async photo(url, caption, keyboard) {
+      await botRef.api.sendPhoto(chatId, url, { caption, reply_markup: keyboard });
+    },
+    async album(items) {
+      await botRef.api.sendMediaGroup(
+        chatId,
+        items.map((it) => InputMediaBuilder.photo(it.url, { caption: it.caption }))
+      );
+    },
+  };
+}
+
+// ============ ТАЙМЕРЫ ВОПРОСОВ ============
+// Авто-переход по истечении timer_seconds. Хранение в памяти процесса: при
+// рестарте таймеры теряются (пользователь всё ещё может ответить вручную).
+const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function clearTimer(sessionId: string) {
+  const t = timers.get(sessionId);
+  if (t) {
+    clearTimeout(t);
+    timers.delete(sessionId);
+  }
+}
+
+function scheduleTimer(sessionId: string, idx: number, seconds: number, chatId: number | null) {
+  clearTimer(sessionId);
+  if (!chatId || !seconds || seconds <= 0) return;
+  const handle = setTimeout(() => {
+    onTimeout(sessionId, idx, chatId).catch((e) => console.error("timer:", e));
+  }, seconds * 1000);
+  timers.set(sessionId, handle);
+}
+
+async function onTimeout(sessionId: string, idx: number, chatId: number) {
+  timers.delete(sessionId);
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    include: { assignment: { include: { test: true } } },
+  });
+  // Уже завершено или пользователь успел ответить и перешёл дальше — выходим.
+  if (!session || session.finishedAt || session.currentQuestion !== idx) return;
+
+  const content = contentOf(session.assignment.test);
+  const q = content.questions[idx];
+  const secs = q.timer_seconds ?? 0;
+  // Пустой ответ-таймаут: скоринг его игнорирует (нет совпадения опции / нет значения).
+  await prisma.answer.create({
+    data: { sessionId, questionId: q.id, optionId: "timeout", responseMs: secs * 1000 },
+  });
+  const sink = chatSink(chatId);
+  await sink.send("⏱ Время на ответ вышло — переходим к следующему вопросу.");
+  await advance(sink, sessionId, idx, chatId);
+}
+
+const timerNote = (q: Question) =>
+  q.timer_seconds ? `\n\n⏱ Ограничение: ${q.timer_seconds} сек` : "";
 
 // ============ ВХОД ============
 
@@ -169,12 +258,12 @@ export async function handleBegin(ctx: Context, assignmentId: string) {
     });
   }
   await ctx.answerCallbackQuery();
-  await renderCurrent(ctx, session.id);
+  await renderCurrent(ctxSink(ctx), session.id, ctx.chat?.id ?? null);
 }
 
 // ============ РЕНДЕР ТЕКУЩЕГО ВОПРОСА ============
 
-async function renderCurrent(ctx: Context, sessionId: string) {
+async function renderCurrent(sink: Sink, sessionId: string, chatId: number | null) {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     include: { assignment: { include: { test: true } } },
@@ -184,7 +273,8 @@ async function renderCurrent(ctx: Context, sessionId: string) {
   const idx = session.currentQuestion;
 
   if (idx >= content.questions.length) {
-    await finishSession(ctx, sessionId);
+    clearTimer(sessionId);
+    await finishSession(sink, sessionId);
     return;
   }
 
@@ -195,30 +285,37 @@ async function renderCurrent(ctx: Context, sessionId: string) {
 
   switch (type) {
     case "likert":
-      await renderLikert(ctx, content, q, idx, progress);
+      await renderLikert(sink, content, q, idx, progress);
       break;
     case "single_choice":
-      await renderSingleChoice(ctx, q, idx, progress);
+      await renderSingleChoice(sink, q, idx, progress);
       break;
     case "forced_pair":
-      await renderForcedPair(ctx, q, idx, progress);
+      await renderForcedPair(sink, q, idx, progress);
       break;
     case "most_least":
-      await renderMostLeast(ctx, q, idx, progress, step);
+      await renderMostLeast(sink, q, idx, progress, step);
+      break;
+    case "image_choice":
+      await renderImageChoice(sink, q, idx, progress);
       break;
     case "numeric_scale":
-      await renderNumeric(ctx, q, idx, progress);
+      await renderNumeric(sink, q, idx, progress);
       break;
     case "free_text":
-      await renderFreeText(ctx, q, idx, progress, sessionId);
+      await renderFreeText(sink, q, idx, progress, sessionId);
       break;
     default:
-      await present(ctx, `Неподдерживаемый тип вопроса: ${type}`);
+      await sink.send(`Неподдерживаемый тип вопроса: ${type}`);
   }
+
+  // Таймер вопроса (если задан и известен чат). Двухшаговый most_least
+  // перезапускает таймер на каждом шаге — это норм.
+  scheduleTimer(sessionId, idx, q.timer_seconds ?? 0, chatId);
 }
 
 async function renderLikert(
-  ctx: Context,
+  sink: Sink,
   content: TestContent,
   q: Question,
   idx: number,
@@ -228,28 +325,28 @@ async function renderLikert(
   for (const opt of content.options_preset ?? []) {
     kb.text(opt.label, `a:${idx}:${opt.id}`).row();
   }
-  await present(ctx, `${progress}\n\n${q.text}`, kb);
+  await sink.send(`${progress}\n\n${q.text}${timerNote(q)}`, kb);
 }
 
-async function renderSingleChoice(ctx: Context, q: Question, idx: number, progress: string) {
+async function renderSingleChoice(sink: Sink, q: Question, idx: number, progress: string) {
   const kb = new InlineKeyboard();
   for (const opt of q.options ?? []) {
     kb.text(opt.label, `a:${idx}:${opt.id}`).row();
   }
-  await present(ctx, `${progress}\n\n${q.text}`, kb);
+  await sink.send(`${progress}\n\n${q.text}${timerNote(q)}`, kb);
 }
 
-async function renderForcedPair(ctx: Context, q: Question, idx: number, progress: string) {
+async function renderForcedPair(sink: Sink, q: Question, idx: number, progress: string) {
   const kb = new InlineKeyboard();
   for (const opt of q.options ?? []) {
     kb.text(opt.label, `a:${idx}:${opt.id}`).row();
   }
-  const text = `${progress}\n\nВыберите утверждение, с которым вы больше согласны:`;
-  await present(ctx, text, kb);
+  const text = `${progress}\n\nВыберите утверждение, с которым вы больше согласны:${timerNote(q)}`;
+  await sink.send(text, kb);
 }
 
 async function renderMostLeast(
-  ctx: Context,
+  sink: Sink,
   q: Question,
   idx: number,
   progress: string,
@@ -258,29 +355,56 @@ async function renderMostLeast(
   const kb = new InlineKeyboard();
   if (!step.mostId) {
     for (const opt of q.options ?? []) kb.text(opt.label, `m:${idx}:${opt.id}`).row();
-    const text = `${progress}${q.prompt ? `\n${q.prompt}` : ""}\n\nЧто *больше* всего похоже на вас?`;
-    await present(ctx, text, kb, true);
+    const text = `${progress}${q.prompt ? `\n${q.prompt}` : ""}\n\nЧто *больше* всего похоже на вас?${timerNote(q)}`;
+    await sink.send(text, kb, true);
   } else {
     for (const opt of q.options ?? []) {
       if (opt.id === step.mostId) continue;
       kb.text(opt.label, `l:${idx}:${opt.id}`).row();
     }
     const text = `${progress}${q.prompt ? `\n${q.prompt}` : ""}\n\nА теперь — что *меньше* всего похоже на вас?`;
-    await present(ctx, text, kb, true);
+    await sink.send(text, kb, true);
   }
 }
 
-async function renderNumeric(ctx: Context, q: Question, idx: number, progress: string) {
+// image_choice: варианты-картинки. Если у всех опций есть image_url — шлём
+// альбом пронумерованных картинок + клавиатуру с номерами. Если есть только
+// стимул q.image_url — фото с подписью и кнопками-вариантами. Иначе — как
+// single_choice (движок адаптируется к авторскому формату).
+async function renderImageChoice(sink: Sink, q: Question, idx: number, progress: string) {
+  const opts = q.options ?? [];
+  const head = `${progress}\n\n${q.text ?? "Выберите вариант:"}${timerNote(q)}`;
+  // Альбом Telegram принимает 2–10 элементов.
+  const allImages =
+    opts.length >= 2 && opts.length <= 10 && opts.every((o) => o.image_url);
+
+  if (allImages) {
+    await sink.album(opts.map((o, i) => ({ url: o.image_url as string, caption: `${i + 1}) ${o.label}` })));
+    const kb = new InlineKeyboard();
+    opts.forEach((o, i) => kb.text(String(i + 1), `a:${idx}:${o.id}`));
+    await sink.send(head, kb);
+  } else if (q.image_url) {
+    const kb = new InlineKeyboard();
+    for (const o of opts) kb.text(o.label, `a:${idx}:${o.id}`).row();
+    await sink.photo(q.image_url, head, kb);
+  } else {
+    const kb = new InlineKeyboard();
+    for (const o of opts) kb.text(o.label, `a:${idx}:${o.id}`).row();
+    await sink.send(head, kb);
+  }
+}
+
+async function renderNumeric(sink: Sink, q: Question, idx: number, progress: string) {
   const kb = new InlineKeyboard();
   for (let n = 0; n <= 10; n++) {
     kb.text(String(n), `a:${idx}:${n}`);
     if (n === 5) kb.row(); // 0-5 в первом ряду, 6-10 во втором
   }
-  await present(ctx, `${progress}\n\n${q.text}`, kb);
+  await sink.send(`${progress}\n\n${q.text}${timerNote(q)}`, kb);
 }
 
 async function renderFreeText(
-  ctx: Context,
+  sink: Sink,
   q: Question,
   idx: number,
   progress: string,
@@ -291,7 +415,10 @@ async function renderFreeText(
     data: { stepState: { shownAt: Date.now(), awaitingText: true } },
   });
   const kb = new InlineKeyboard().text("Пропустить", `skip:${idx}`);
-  await present(ctx, `${progress}\n\n${q.text}\n\n✍️ Напишите ответ сообщением или нажмите «Пропустить».`, kb);
+  await sink.send(
+    `${progress}\n\n${q.text}${timerNote(q)}\n\n✍️ Напишите ответ сообщением или нажмите «Пропустить».`,
+    kb
+  );
 }
 
 // ============ ОБРАБОТКА ОТВЕТОВ ============
@@ -312,11 +439,16 @@ export async function handleAnswerCallback(ctx: Context, data: string) {
     return;
   }
 
+  // Пользователь ответил вовремя — снимаем таймер вопроса.
+  clearTimer(session.id);
+
   const content = contentOf(session.assignment.test);
   const q = content.questions[qIdx];
   const type = q.type ?? content.question_type;
   const step = (session.stepState ?? {}) as StepState;
   const responseMs = step.shownAt ? Math.max(0, Date.now() - step.shownAt) : null;
+  const chatId = ctx.chat?.id ?? null;
+  const sink = ctxSink(ctx);
 
   await ctx.answerCallbackQuery();
 
@@ -326,7 +458,7 @@ export async function handleAnswerCallback(ctx: Context, data: string) {
       where: { id: session.id },
       data: { stepState: { shownAt: step.shownAt, mostId: optId } },
     });
-    await renderCurrent(ctx, session.id);
+    await renderCurrent(sink, session.id, chatId);
     return;
   }
 
@@ -338,7 +470,7 @@ export async function handleAnswerCallback(ctx: Context, data: string) {
         { sessionId: session.id, questionId: q.id, optionId: `least:${optId}`, responseMs },
       ],
     });
-    await advance(ctx, session.id, qIdx);
+    await advance(sink, session.id, qIdx, chatId);
     return;
   }
 
@@ -346,11 +478,11 @@ export async function handleAnswerCallback(ctx: Context, data: string) {
     await prisma.answer.create({
       data: { sessionId: session.id, questionId: q.id, optionId: "skip", responseMs },
     });
-    await advance(ctx, session.id, qIdx);
+    await advance(sink, session.id, qIdx, chatId);
     return;
   }
 
-  // kind === 'a' — likert / single_choice / forced_pair / numeric_scale
+  // kind === 'a' — likert / single_choice / forced_pair / image_choice / numeric_scale
   let answerValue: number | null = null;
   if (type === "likert") {
     const opt = content.options_preset?.find((o) => o.id === optId);
@@ -361,7 +493,7 @@ export async function handleAnswerCallback(ctx: Context, data: string) {
   await prisma.answer.create({
     data: { sessionId: session.id, questionId: q.id, optionId: optId, answerValue, responseMs },
   });
-  await advance(ctx, session.id, qIdx);
+  await advance(sink, session.id, qIdx, chatId);
 }
 
 export async function handleText(ctx: Context) {
@@ -369,6 +501,8 @@ export async function handleText(ctx: Context) {
   if (!session) return; // не в процессе теста — игнорируем обычный текст
   const step = (session.stepState ?? {}) as StepState;
   if (!step.awaitingText) return;
+
+  clearTimer(session.id);
 
   const content = contentOf(session.assignment.test);
   const qIdx = session.currentQuestion;
@@ -383,20 +517,21 @@ export async function handleText(ctx: Context) {
       responseMs,
     },
   });
-  await advance(ctx, session.id, qIdx);
+  await advance(ctxSink(ctx), session.id, qIdx, ctx.chat?.id ?? null);
 }
 
-async function advance(ctx: Context, sessionId: string, fromIdx: number) {
+async function advance(sink: Sink, sessionId: string, fromIdx: number, chatId: number | null) {
+  clearTimer(sessionId);
   await prisma.session.update({
     where: { id: sessionId },
     data: { currentQuestion: fromIdx + 1, stepState: { shownAt: Date.now() } },
   });
-  await renderCurrent(ctx, sessionId);
+  await renderCurrent(sink, sessionId, chatId);
 }
 
 // ============ ЗАВЕРШЕНИЕ ============
 
-async function finishSession(ctx: Context, sessionId: string) {
+async function finishSession(sink: Sink, sessionId: string) {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     include: {
@@ -405,6 +540,7 @@ async function finishSession(ctx: Context, sessionId: string) {
     },
   });
   if (!session || session.finishedAt) return;
+  clearTimer(sessionId);
 
   const content = contentOf(session.assignment.test);
   const raw: RawAnswer[] = session.answers.map((a) => ({
@@ -494,7 +630,7 @@ async function finishSession(ctx: Context, sessionId: string) {
   } else if (content.show_result_to_respondent && result.interpretation.length) {
     text += "\n\nВаш результат:\n" + result.interpretation.map((i) => `• ${i.text}`).join("\n");
   }
-  await present(ctx, text);
+  await sink.send(text);
 
   // Пересборка накопительного профиля-анамнеза (промт 2) — после показа сотруднику,
   // чтобы он не ждал. Сохраняется снимок с версией для карточки руководителя.
@@ -540,7 +676,7 @@ export async function handleContinue(ctx: Context) {
     where: { id: session.id },
     data: { resumeCount: { increment: 1 } },
   });
-  await renderCurrent(ctx, session.id);
+  await renderCurrent(ctxSink(ctx), session.id, ctx.chat?.id ?? null);
 }
 
 export async function handleMyTests(ctx: Context) {

@@ -29,6 +29,7 @@ export interface QuestionOption {
   value?: number;
   scale?: string;              // single_choice / most_least
   scales?: Record<string, number>; // forced_pair: вклад в несколько шкал
+  image_url?: string;          // image_choice: вариант-картинка
 }
 
 export interface Question {
