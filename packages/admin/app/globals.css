@@ -53,3 +53,15 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* Печать: белый фон, сохраняем цвета блоков, поля страницы. */
+@media print {
+  body {
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @page {
+    margin: 14mm;
+  }
+}

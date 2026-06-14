@@ -125,7 +125,16 @@ export default async function PersonProfile({ params }: { params: { id: string }
       {/* Карточка */}
       <Card>
         <CardContent className="p-6">
-          <h1 className="text-2xl font-bold">{person.fullName}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-2xl font-bold">{person.fullName}</h1>
+            <Link
+              href={`/print/people/${person.id}`}
+              target="_blank"
+              className="shrink-0 rounded-md border border-input px-3 py-1.5 text-sm font-medium hover:bg-accent"
+            >
+              📄 PDF-карточка
+            </Link>
+          </div>
           <p className="text-muted-foreground">
             {person.position ?? "—"} · {person.department?.name ?? "без отдела"}
           </p>
